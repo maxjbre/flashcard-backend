@@ -1,0 +1,14 @@
+Start backend:
+
+- cd backend
+- node index.js
+
+Start frontend:
+
+- cd frontend
+- npm run dev
+
+Show database
+
+- mongosh
+- db.flashcards.find().pretty()
