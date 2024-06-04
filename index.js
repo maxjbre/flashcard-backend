@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 // Load environment variables from .env file
 dotenv.config();
 
-import flashcardRoutes from "./routes/flashcard.js";
+import flashcardRoutes from "./routes/flashcards.js";
 import generateFlashcardsRoutes from "./routes/generate-flashcards.js";
 
 // Create an Express application
