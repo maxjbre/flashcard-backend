@@ -13,6 +13,11 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Function to sanitize and normalize text
+const sanitizeText = (text) => {
+  return text.replace(/^(.*?)Answer: /i, "").trim();
+};
+
 // Function to extract flashcards from a JSON response
 const extractFlashcards = (jsonString, bookTitle) => {
   let flashcards;
@@ -27,24 +32,11 @@ const extractFlashcards = (jsonString, bookTitle) => {
     }
 
     // Add bookTitle to each flashcard and sanitize data
-    flashcards = flashcards.map((flashcard) => {
-      const sanitizedFlashcard = {
-        question: flashcard.question.trim(),
-        answer: flashcard.answer.trim(),
-        bookTitle,
-      };
-
-      // Ensure no extra sentences at the beginning or end of the answer
-      sanitizedFlashcard.answer = sanitizedFlashcard.answer.replace(
-        /^(.*?)Answer: /i,
-        ""
-      );
-      sanitizedFlashcard.answer = sanitizedFlashcard.answer
-        .replace(/(.*?)$/i, "")
-        .trim();
-
-      return sanitizedFlashcard;
-    });
+    flashcards = flashcards.map((flashcard) => ({
+      question: sanitizeText(flashcard.question),
+      answer: sanitizeText(flashcard.answer),
+      bookTitle,
+    }));
   } catch (error) {
     throw new Error("Failed to parse flashcards JSON: " + error.message);
   }
@@ -57,7 +49,7 @@ router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
   // Formulate the prompt for GPT
-  const prompt = `Create flashcards for the key insights, concepts, and learnings explained in the non-fiction book titled "${title}". Only create flashcards for non-fiction books. Don't ask basic questions like about the title or author. Ask concrete questions about concepts. Format each flashcard in JSON with the fields: "question" and "answer". Example: [{ "question": "What is the main idea of the book?", "answer": "The main idea is..." }]`;
+  const prompt = `Create flashcards for the key insights, concepts, and learnings explained in the non-fiction book titled "${title}". Only create flashcards for non-fiction books. Don't ask basic questions like about the title or author. Ask concrete questions about concepts. Format each flashcard in JSON with the fields: "question" and "answer". Example: [{ "question": "What is Hedonic Adaption?", "answer": "The process of..." }]`;
 
   try {
     // Make a request to the GPT API
