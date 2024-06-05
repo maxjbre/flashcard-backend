@@ -13,38 +13,28 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Function to extract flashcards from a potentially noisy response
-const extractFlashcards = (text, bookTitle) => {
-  // Split the response into lines
-  const lines = text.split("\n");
+// Function to extract flashcards from a JSON response
+const extractFlashcards = (jsonString, bookTitle) => {
+  let flashcards;
 
-  // Initialize an array to hold flashcards
-  const flashcards = [];
+  try {
+    // Parse the JSON string into an array of flashcards
+    flashcards = JSON.parse(jsonString);
 
-  // Initialize variables to hold current flashcard fields
-  let question = "";
-  let answer = "";
-
-  // Iterate through lines to extract flashcard data
-  lines.forEach((line) => {
-    // Check for question
-    if (line.startsWith("Question:")) {
-      question = line.replace("Question:", "").trim();
-    }
-    // Check for answer
-    else if (line.startsWith("Answer:")) {
-      answer = line.replace("Answer:", "").trim();
+    // Validate the parsed flashcards
+    if (!Array.isArray(flashcards) || flashcards.length === 0) {
+      throw new Error("Invalid flashcards format: not an array or empty");
     }
 
-    // If both fields are filled, push the flashcard to the array
-    if (question && answer) {
-      flashcards.push({ question, answer, bookTitle });
-      question = "";
-      answer = "";
-    }
-  });
+    // Add bookTitle to each flashcard
+    flashcards = flashcards.map((flashcard) => ({
+      ...flashcard,
+      bookTitle,
+    }));
+  } catch (error) {
+    throw new Error("Failed to parse flashcards JSON: " + error.message);
+  }
 
-  // Return the extracted flashcards
   return flashcards;
 };
 
@@ -53,7 +43,7 @@ router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
   // Formulate the prompt for GPT
-  const prompt = `Create flashcards for the key-insights, concepts and learnings that are explained in the book titled "${title}". Don't create general questions like the "who is the author". Each flashcard should include the fields: Question and Answer.`;
+  const prompt = `Create flashcards for the key insights, concepts, and learnings explained in the non-fiction book titled "${title}". Only create flashcards for non-fiction books. Don't ask basic questions like about the title or author. Ask concrete questions about concepts.Format each flashcard in JSON with the fields: "question" and "answer". Example: [{ "question": "What is the main idea of the book?", "answer": "The main idea is..." }]`;
 
   try {
     // Make a request to the GPT API
@@ -63,22 +53,13 @@ router.post("/generate-flashcards", async (req, res) => {
       temperature: 0.7,
     });
 
-    console.log("GPT-3 raw response:", gptResponse.choices[0].message.content);
+    const responseContent = gptResponse.choices[0].message.content;
+    console.log("GPT raw response:", responseContent);
 
     // Extract flashcards from the GPT-3 response content
-    const generatedFlashcards = extractFlashcards(
-      gptResponse.choices[0].message.content,
-      title
-    );
+    const generatedFlashcards = extractFlashcards(responseContent, title);
 
     // Validate the generated flashcards
-    if (
-      !Array.isArray(generatedFlashcards) ||
-      generatedFlashcards.length === 0
-    ) {
-      throw new Error("Invalid flashcards format: not an array or empty");
-    }
-
     generatedFlashcards.forEach((flashcard) => {
       if (!flashcard.question || !flashcard.answer || !flashcard.bookTitle) {
         throw new Error("Invalid flashcard format: missing fields");
