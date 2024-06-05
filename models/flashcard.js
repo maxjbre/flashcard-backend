@@ -13,6 +13,10 @@ const flashcardSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  author: {
+    type: String,
+    required: true,
+  },
 });
 
 const Flashcard = mongoose.model("Flashcard", flashcardSchema);
