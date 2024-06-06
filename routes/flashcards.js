@@ -1,106 +1,117 @@
 import express from "express";
-import Flashcard from "../models/flashcard.js"; // Import the Flashcard model
+import OpenAI from "openai"; // Import the OpenAI library
+import Book from "../models/book.js";
+import Flashcard from "../models/flashcard.js";
+import dotenv from "dotenv";
+
+// Load environment variables from .env file
+dotenv.config();
 
 const router = express.Router();
 
-// CRUD routes -> Create, Read, Update, and Delete
-
-// Create a new flashcard
-router.post("/", async (req, res) => {
-  try {
-    const flashcard = new Flashcard(req.body); // Create a new flashcard document
-    const savedFlashcard = await flashcard.save(); // Save the flashcard to the database
-    res.status(201).json(savedFlashcard); // Send the saved flashcard as a response
-  } catch (err) {
-    res.status(400).json({ message: err.message }); // Handle errors
-  }
+// Initialize OpenAI with configuration
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Bulk upload route
-router.post("/bulk-upload", async (req, res) => {
-  try {
-    console.log("Received request headers:", req.headers); // Log request headers
-    console.log("Received request body:", req.body); // Log the entire request body
+// Function to sanitize and normalize text
+const sanitizeText = (text) => {
+  return text.replace(/^(.*?)Answer: /i, "").trim();
+};
 
-    const { flashcards } = req.body; // Extract flashcards from the request body
-    if (!Array.isArray(flashcards)) {
-      throw new Error("Flashcards must be an array");
+// Function to extract flashcards from a JSON response
+const extractFlashcards = (jsonString) => {
+  let flashcards;
+
+  try {
+    // Parse the JSON string into an array of flashcards
+    flashcards = JSON.parse(jsonString);
+
+    // Validate the parsed flashcards
+    if (!Array.isArray(flashcards) || flashcards.length === 0) {
+      throw new Error("Invalid flashcards format: not an array or empty");
     }
-    await Flashcard.insertMany(flashcards); // Insert the flashcards into the database
-    res.status(201).send({ message: "Flashcards uploaded successfully" }); // Send success response
-  } catch (error) {
-    console.error("Bulk upload error:", error.message);
-    res
-      .status(400)
-      .send({ error: error.message || "Failed to upload flashcards" }); // Send error response if something goes wrong
-  }
-});
 
-// Fetch all unique book titles
-router.get("/books", async (req, res) => {
+    // Sanitize data
+    flashcards = flashcards.map((flashcard) => ({
+      question: sanitizeText(flashcard.question),
+      answer: sanitizeText(flashcard.answer),
+    }));
+  } catch (error) {
+    throw new Error("Failed to parse flashcards JSON: " + error.message);
+  }
+
+  return flashcards;
+};
+
+// Route to generate flashcards using GPT-4
+router.post("/generate-flashcards", async (req, res) => {
+  const { title } = req.body;
+
+  // Formulate the prompt for GPT
+  const prompt = `Create flashcards for the key concepts explained in the book titled "${title}". Don't create basic questions like about the title or author. Create flashcards for concrete concepts from the book. Format each flashcard in JSON with the fields: "question" and "answer".`;
+
   try {
-    const books = await Flashcard.distinct("bookTitle");
-    res.status(200).json({ books });
+    // Make a request to the GPT API
+    const gptResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    });
+
+    const responseContent = gptResponse.choices[0].message.content;
+    console.log("GPT raw response:", responseContent);
+
+    // Extract flashcards from the GPT-4 response content
+    const generatedFlashcards = extractFlashcards(responseContent);
+
+    // Check if the book already exists in the database
+    let book = await Book.findOne({ title }).lean();
+
+    // If the book does not exist, create a new book entry
+    if (!book) {
+      book = new Book({ title, author: "Unknown" }); // Author is unknown since the user only inputs the title
+      await book.save();
+    }
+
+    // Add book reference to each flashcard and sanitize data
+    const flashcardsToSave = generatedFlashcards.map((flashcard) => ({
+      ...flashcard,
+      bookId: book._id,
+    }));
+
+    // Save the generated flashcards to the database
+    const savedFlashcards = await Flashcard.insertMany(flashcardsToSave);
+
+    // Return the generated flashcards to the frontend
+    res.status(200).json({ flashcards: savedFlashcards });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch books" });
+    console.error(
+      "Error generating flashcards:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      error: "Failed to generate flashcards",
+      details: error.response?.data || error.message,
+    });
   }
 });
 
-// Fetch flashcards by book title
+// Route to get flashcards with pagination
 router.get("/", async (req, res) => {
-  const { bookTitle } = req.query;
+  const { bookId, page = 1, limit = 10 } = req.query;
+
   try {
-    const flashcards = await Flashcard.find(bookTitle ? { bookTitle } : {});
+    const flashcards = await Flashcard.find({ bookId })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .populate("bookId")
+      .lean();
+
     res.status(200).json(flashcards);
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch flashcards" });
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Get a single flashcard by ID
-router.get("/:id", async (req, res) => {
-  try {
-    const flashcard = await Flashcard.findById(req.params.id); // Find the flashcard by ID
-    if (flashcard) {
-      res.json(flashcard); // Send the flashcard as a response
-    } else {
-      res.status(404).json({ message: "Flashcard not found" }); // Handle flashcard not found
-    }
-  } catch (err) {
-    res.status(500).json({ message: err.message }); // Handle errors
-  }
-});
-
-// Update a flashcard
-router.put("/:id", async (req, res) => {
-  try {
-    const flashcard = await Flashcard.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    ); // Find and update the flashcard by ID
-    if (flashcard) {
-      res.json(flashcard); // Send the updated flashcard as a response
-    } else {
-      res.status(404).json({ message: "Flashcard not found" }); // Handle flashcard not found
-    }
-  } catch (err) {
-    res.status(400).json({ message: err.message }); // Handle errors
-  }
-});
-
-// Delete a flashcard
-router.delete("/:id", async (req, res) => {
-  try {
-    const flashcard = await Flashcard.findByIdAndDelete(req.params.id); // Find and delete the flashcard by ID
-    if (flashcard) {
-      res.json({ message: "Flashcard deleted" }); // Send a success message
-    } else {
-      res.status(404).json({ message: "Flashcard not found" }); // Handle flashcard not found
-    }
-  } catch (err) {
-    res.status(500).json({ message: err.message }); // Handle errors
-  }
-});
-
-export default router; // Export the router to use in the main application
+export default router;

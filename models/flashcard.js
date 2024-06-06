@@ -9,16 +9,13 @@ const flashcardSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  bookTitle: {
-    type: String,
+  bookId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Book",
     required: true,
-  },
-  author: {
-    type: String,
-    required: true,
+    index: true,
   },
 });
 
 const Flashcard = mongoose.model("Flashcard", flashcardSchema);
-
 export default Flashcard;

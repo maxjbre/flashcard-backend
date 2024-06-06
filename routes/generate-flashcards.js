@@ -1,6 +1,7 @@
 import express from "express";
-import OpenAI from "openai"; // Import the OpenAI library
-import Flashcard from "../models/flashcard.js"; // Adjust the path as necessary
+import OpenAI from "openai";
+import Book from "../models/book.js";
+import Flashcard from "../models/flashcard.js";
 import dotenv from "dotenv";
 
 // Load environment variables from .env file
@@ -18,11 +19,24 @@ const sanitizeText = (text) => {
   return text.replace(/^(.*?)Answer: /i, "").trim();
 };
 
+// Function to extract the JSON part from the GPT response
+const extractJSON = (response) => {
+  const jsonStart = response.indexOf("[");
+  const jsonEnd = response.lastIndexOf("]") + 1;
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("Failed to locate JSON in the response");
+  }
+  const jsonString = response.substring(jsonStart, jsonEnd);
+  return jsonString;
+};
+
 // Function to extract flashcards from a JSON response
-const extractFlashcards = (jsonString, bookTitle) => {
+const extractFlashcards = (responseContent) => {
   let flashcards;
 
   try {
+    const jsonString = extractJSON(responseContent);
+
     // Parse the JSON string into an array of flashcards
     flashcards = JSON.parse(jsonString);
 
@@ -31,11 +45,10 @@ const extractFlashcards = (jsonString, bookTitle) => {
       throw new Error("Invalid flashcards format: not an array or empty");
     }
 
-    // Add bookTitle to each flashcard and sanitize data
+    // Sanitize data
     flashcards = flashcards.map((flashcard) => ({
       question: sanitizeText(flashcard.question),
       answer: sanitizeText(flashcard.answer),
-      bookTitle,
     }));
   } catch (error) {
     throw new Error("Failed to parse flashcards JSON: " + error.message);
@@ -44,12 +57,12 @@ const extractFlashcards = (jsonString, bookTitle) => {
   return flashcards;
 };
 
-// Route to generate flashcards using GPT-3
+// Route to generate flashcards using GPT-4
 router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
   // Formulate the prompt for GPT
-  const prompt = `Create flashcards for the key concepts explained in the book titled "${title}". Don't create basic questions like about the title or author. Create flashcards for concrete concepts from the book. Format each flashcard in JSON with the fields: "question", "answer" and "author". Example: [{ "question": "What is Hedonic Adaption?", "answer": "The process of...", "author": "Max Brenner"}]`;
+  const prompt = `Create flashcards for the key concepts explained in the book titled "${title}". Don't create basic questions like about the title or author. Create flashcards for concrete concepts from the book. Format each flashcard in JSON with the fields: "question" and "answer".`;
 
   try {
     // Make a request to the GPT API
@@ -62,29 +75,34 @@ router.post("/generate-flashcards", async (req, res) => {
     const responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
 
-    // Extract flashcards from the GPT-3 response content
-    const generatedFlashcards = extractFlashcards(responseContent, title);
+    // Extract flashcards from the GPT-4 response content
+    const generatedFlashcards = extractFlashcards(responseContent);
 
-    // Validate the generated flashcards
-    generatedFlashcards.forEach((flashcard) => {
-      if (!flashcard.question || !flashcard.answer || !flashcard.bookTitle) {
-        throw new Error("Invalid flashcard format: missing fields");
-      }
-    });
+    // Check if the book already exists in the database
+    let book = await Book.findOne({ title }).lean();
+
+    // If the book does not exist, create a new book entry
+    if (!book) {
+      book = new Book({ title, author: "Unknown" }); // Author is unknown since the user only inputs the title
+      await book.save();
+    }
+
+    // Add book reference to each flashcard and sanitize data
+    const flashcardsToSave = generatedFlashcards.map((flashcard) => ({
+      ...flashcard,
+      bookId: book._id,
+    }));
 
     // Save the generated flashcards to the database
-    const savedFlashcards = await Flashcard.insertMany(generatedFlashcards);
+    const savedFlashcards = await Flashcard.insertMany(flashcardsToSave);
 
     // Return the generated flashcards to the frontend
     res.status(200).json({ flashcards: savedFlashcards });
   } catch (error) {
-    console.error(
-      "Error generating flashcards:",
-      error.response?.data || error.message
-    );
+    console.error("Error generating flashcards:", error);
     res.status(500).json({
       error: "Failed to generate flashcards",
-      details: error.response?.data || error.message,
+      details: error.message,
     });
   }
 });
