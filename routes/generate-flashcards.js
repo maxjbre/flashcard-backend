@@ -49,12 +49,12 @@ router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
   // Formulate the prompt for GPT
-  const prompt = `Create flashcards for the key insights, concepts, and learnings explained in the non-fiction book titled "${title}". Only create flashcards for non-fiction books. Don't ask basic questions like about the title or author. Ask concrete questions about concepts. Format each flashcard in JSON with the fields: "question" and "answer". Example: [{ "question": "What is Hedonic Adaption?", "answer": "The process of..." }]`;
+  const prompt = `Create flashcards for the key concepts explained in the book titled "${title}". Don't create basic questions like about the title or author. Create flashcards for concrete concepts from the book. Format each flashcard in JSON with the fields: "question", "answer" and "author". Example: [{ "question": "What is Hedonic Adaption?", "answer": "The process of...", "author": "Max Brenner"}]`;
 
   try {
     // Make a request to the GPT API
     const gptResponse = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
     });
