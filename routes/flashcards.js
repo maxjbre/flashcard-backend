@@ -19,12 +19,12 @@ const sanitizeText = (text) => {
 
 const extractFlashcards = (responseContent) => {
   let flashcards = [];
-  const jsonRegex = /```json\s+({[\s\S]*?})\s+```/g;
-  let match;
+  const jsonRegex = /\{[\s\S]*?\}/g; // Match JSON objects
 
+  let match;
   while ((match = jsonRegex.exec(responseContent)) !== null) {
     try {
-      const jsonObject = JSON.parse(match[1]);
+      const jsonObject = JSON.parse(match[0]);
       if (jsonObject.question && jsonObject.answer) {
         flashcards.push({
           question: sanitizeText(jsonObject.question),
@@ -32,7 +32,7 @@ const extractFlashcards = (responseContent) => {
         });
       }
     } catch (error) {
-      console.error("Failed to parse a JSON object:", match[1]);
+      console.error("Failed to parse a JSON object:", match[0]);
       console.error("Error:", error);
     }
   }
@@ -47,7 +47,7 @@ const extractFlashcards = (responseContent) => {
 router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
-  const prompt = `Create flashcards for the key concepts explained in the book titled "${title}". Don't create basic questions like about the title or author. Create flashcards for concrete concepts from the book. Format each flashcard in JSON with the fields: "question" and "answer".`;
+  const prompt = `Create a JSON array of flashcards for the key concepts explained in the book titled "${title}". Each flashcard should be a JSON object with the fields: "question" and "answer". Provide only the JSON array and nothing else.`;
 
   try {
     const gptResponse = await openai.chat.completions.create({
@@ -59,7 +59,6 @@ router.post("/generate-flashcards", async (req, res) => {
     const responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
 
-    // Extract and parse JSON flashcards
     let generatedFlashcards;
     try {
       generatedFlashcards = extractFlashcards(responseContent);
