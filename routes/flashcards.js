@@ -1,3 +1,4 @@
+// routes/flashcards.js
 import express from "express";
 import OpenAI from "openai";
 import Book from "../models/book.js";
@@ -129,13 +130,19 @@ router.get("/flashcards", async (req, res) => {
 });
 
 router.get("/books", async (req, res) => {
+  const limit = parseInt(req.query.limit) || 5;
+  const page = parseInt(req.query.page) || 1;
+
   try {
-    await connectDB();
-    const books = await Book.find().lean();
+    const books = await Book.find()
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
     res.status(200).json(books);
   } catch (error) {
     console.error("Error fetching books:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Failed to fetch books" });
   }
 });
 
