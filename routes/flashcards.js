@@ -17,37 +17,43 @@ const sanitizeText = (text) => {
   return text.replace(/^(.*?)Answer: /i, "").trim();
 };
 
-const extractFlashcards = (responseContent) => {
-  let flashcards = [];
-  const jsonRegex = /\{[\s\S]*?\}/g; // Match JSON objects
+const extractBookInfoAndFlashcards = (responseContent) => {
+  // Remove non-JSON parts like "```json" and "```"
+  const cleanedContent = responseContent.replace(/```json|```/g, "").trim();
 
-  let match;
-  while ((match = jsonRegex.exec(responseContent)) !== null) {
-    try {
-      const jsonObject = JSON.parse(match[0]);
-      if (jsonObject.question && jsonObject.answer) {
-        flashcards.push({
-          question: sanitizeText(jsonObject.question),
-          answer: sanitizeText(jsonObject.answer),
-        });
-      }
-    } catch (error) {
-      console.error("Failed to parse a JSON object:", match[0]);
-      console.error("Error:", error);
+  try {
+    const jsonResponse = JSON.parse(cleanedContent);
+    const { title, author, flashcards } = jsonResponse;
+
+    if (!Array.isArray(flashcards)) {
+      throw new Error("Invalid flashcards format: not an array");
     }
-  }
 
-  if (flashcards.length === 0) {
-    throw new Error("No valid flashcards found in the response");
-  }
+    const sanitizedFlashcards = flashcards.map((flashcard) => ({
+      question: sanitizeText(flashcard.question),
+      answer: sanitizeText(flashcard.answer),
+    }));
 
-  return flashcards;
+    return { title, author, flashcards: sanitizedFlashcards };
+  } catch (error) {
+    console.error("Error parsing JSON content:", error);
+    throw new Error("Failed to parse JSON from OpenAI response");
+  }
 };
 
 router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
-  const prompt = `Create a JSON array of flashcards for the key concepts explained in the book titled "${title}". Each flashcard should be a JSON object with the fields: "question" and "answer". Provide only the JSON array and nothing else.`;
+  const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Provide only the book information and JSON array and nothing else. Format:
+  {
+    "title": "<Correct Title>",
+    "author": "<Correct Author>",
+    "flashcards": [
+      {"question": "Question 1", "answer": "Answer 1"},
+      {"question": "Question 2", "answer": "Answer 2"},
+      ...
+    ]
+  }`;
 
   try {
     const gptResponse = await openai.chat.completions.create({
@@ -59,21 +65,30 @@ router.post("/generate-flashcards", async (req, res) => {
     const responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
 
+    // Extract book information and flashcards
+    let bookInfo;
     let generatedFlashcards;
     try {
-      generatedFlashcards = extractFlashcards(responseContent);
+      const {
+        title: bookTitle,
+        author,
+        flashcards,
+      } = extractBookInfoAndFlashcards(responseContent);
+      bookInfo = { title: bookTitle, author };
+      generatedFlashcards = flashcards;
     } catch (error) {
-      console.error("Error extracting flashcards:", error);
+      console.error("Error extracting book info or flashcards:", error);
       return res.status(500).json({
         error: "Failed to generate flashcards",
         details: error.message,
       });
     }
 
-    let book = await Book.findOne({ title }).lean();
+    // Check if the book already exists in the database
+    let book = await Book.findOne({ title: bookInfo.title }).lean();
 
     if (!book) {
-      book = new Book({ title, author: "Unknown" });
+      book = new Book({ title: bookInfo.title, author: bookInfo.author });
       await book.save();
     }
 
