@@ -8,7 +8,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import flashcardRoutes from "./routes/flashcards.js";
-import generateFlashcardsRoutes from "./routes/generate-flashcards.js";
 
 // Create an Express application
 const app = express();
@@ -31,11 +30,8 @@ app.get("/", (req, res) => {
   res.send("Flashcard API is running");
 });
 
-// Use the flashcard routes for paths starting with /flashcards
-app.use("/flashcards", flashcardRoutes);
-
-// Use the generate flashcards routes for paths starting with /api
-app.use("/api", generateFlashcardsRoutes);
+// Use the flashcard routes for paths starting with /api
+app.use("/api", flashcardRoutes);
 
 // Define the port for the server
 const port = process.env.PORT || 3001;

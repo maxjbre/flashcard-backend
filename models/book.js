@@ -13,8 +13,5 @@ const bookSchema = new mongoose.Schema({
   },
 });
 
-// Composite unique index to prevent duplicate books
-bookSchema.index({ title: 1, author: 1 }, { unique: true });
-
-const Book = mongoose.model("Book", bookSchema);
+const Book = mongoose.models.Book || mongoose.model("Book", bookSchema);
 export default Book;
