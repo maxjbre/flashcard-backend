@@ -17,22 +17,28 @@ const sanitizeText = (text) => {
   return text.replace(/^(.*?)Answer: /i, "").trim();
 };
 
-const extractFlashcards = (jsonString) => {
-  let flashcards;
+const extractFlashcards = (responseContent) => {
+  let flashcards = [];
+  const jsonRegex = /```json\s+({[\s\S]*?})\s+```/g;
+  let match;
 
-  try {
-    flashcards = JSON.parse(jsonString);
-
-    if (!Array.isArray(flashcards) || flashcards.length === 0) {
-      throw new Error("Invalid flashcards format: not an array or empty");
+  while ((match = jsonRegex.exec(responseContent)) !== null) {
+    try {
+      const jsonObject = JSON.parse(match[1]);
+      if (jsonObject.question && jsonObject.answer) {
+        flashcards.push({
+          question: sanitizeText(jsonObject.question),
+          answer: sanitizeText(jsonObject.answer),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to parse a JSON object:", match[1]);
+      console.error("Error:", error);
     }
+  }
 
-    flashcards = flashcards.map((flashcard) => ({
-      question: sanitizeText(flashcard.question),
-      answer: sanitizeText(flashcard.answer),
-    }));
-  } catch (error) {
-    throw new Error("Failed to parse flashcards JSON: " + error.message);
+  if (flashcards.length === 0) {
+    throw new Error("No valid flashcards found in the response");
   }
 
   return flashcards;
@@ -53,20 +59,15 @@ router.post("/generate-flashcards", async (req, res) => {
     const responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
 
-    // Check if the response is valid JSON
+    // Extract and parse JSON flashcards
     let generatedFlashcards;
     try {
       generatedFlashcards = extractFlashcards(responseContent);
-    } catch (jsonError) {
-      // Log the response content for debugging
-      console.error(
-        "Failed to parse JSON from OpenAI response:",
-        responseContent
-      );
-      console.error("JSON parse error:", jsonError);
+    } catch (error) {
+      console.error("Error extracting flashcards:", error);
       return res.status(500).json({
         error: "Failed to generate flashcards",
-        details: "Invalid response format from OpenAI",
+        details: error.message,
       });
     }
 
