@@ -1,10 +1,10 @@
-// routes/flashcards.js
 import express from "express";
 import OpenAI from "openai";
 import Book from "../models/book.js";
 import Flashcard from "../models/flashcard.js";
 import dotenv from "dotenv";
 import connectDB from "../utils/connectDB.js";
+import slugify from "slugify";
 
 dotenv.config();
 
@@ -19,7 +19,6 @@ const sanitizeText = (text) => {
 };
 
 const extractBookInfoAndFlashcards = (responseContent) => {
-  // Remove non-JSON parts like "```json" and "```"
   const cleanedContent = responseContent.replace(/```json|```/g, "").trim();
 
   try {
@@ -66,7 +65,6 @@ router.post("/generate-flashcards", async (req, res) => {
     const responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
 
-    // Extract book information and flashcards
     let bookInfo;
     let generatedFlashcards;
     try {
@@ -85,13 +83,25 @@ router.post("/generate-flashcards", async (req, res) => {
       });
     }
 
-    // Check if the book already exists in the database
-    let book = await Book.findOne({ title: bookInfo.title }).lean();
+    let book = await Book.findOne({ title: bookInfo.title });
 
     if (!book) {
-      book = new Book({ title: bookInfo.title, author: bookInfo.author });
+      book = new Book({
+        title: bookInfo.title,
+        author: bookInfo.author,
+        slug: slugify(`${bookInfo.title} by ${bookInfo.author}`, {
+          lower: true,
+        }),
+      });
       await book.save();
+    } else {
+      if (!book.slug) {
+        book.slug = slugify(`${book.title} by ${book.author}`, { lower: true });
+        await book.save();
+      }
     }
+
+    console.log("Book ID:", book._id);
 
     const flashcardsToSave = generatedFlashcards.map((flashcard) => ({
       ...flashcard,
@@ -116,6 +126,12 @@ router.post("/generate-flashcards", async (req, res) => {
 router.get("/flashcards", async (req, res) => {
   const { bookId, page = 1, limit = 10 } = req.query;
 
+  console.log(`Received bookId: ${bookId}`);
+
+  if (!bookId) {
+    return res.status(400).json({ error: "Missing bookId parameter" });
+  }
+
   try {
     const flashcards = await Flashcard.find({ bookId })
       .skip((page - 1) * limit)
@@ -123,23 +139,32 @@ router.get("/flashcards", async (req, res) => {
       .populate("bookId")
       .lean();
 
+    console.log(`Flashcards found: ${flashcards.length}`);
     res.status(200).json(flashcards);
   } catch (error) {
+    console.error("Error fetching flashcards:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 router.get("/books", async (req, res) => {
-  const limit = parseInt(req.query.limit) || 5;
-  const page = parseInt(req.query.page) || 1;
+  const { slug } = req.query;
 
   try {
-    const books = await Book.find()
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-    res.status(200).json(books);
+    if (slug) {
+      const book = await Book.findOne({ slug }).lean();
+      console.log("Book fetched:", book);
+      res.status(200).json(book ? [book] : []);
+    } else {
+      const limit = parseInt(req.query.limit) || 5;
+      const page = parseInt(req.query.page) || 1;
+      const books = await Book.find()
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+      res.status(200).json(books);
+    }
   } catch (error) {
     console.error("Error fetching books:", error.message);
     res.status(500).json({ error: "Failed to fetch books" });

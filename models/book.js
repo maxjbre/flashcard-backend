@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import slugify from "slugify";
 
 const bookSchema = new mongoose.Schema({
   title: {
@@ -11,6 +12,19 @@ const bookSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  slug: {
+    type: String,
+    unique: true,
+    required: true,
+  },
+});
+
+// Automatically generate slug from title and author
+bookSchema.pre("save", function (next) {
+  if (this.isNew || this.isModified("title")) {
+    this.slug = slugify(`${this.title} by ${this.author}`, { lower: true });
+  }
+  next();
 });
 
 const Book = mongoose.models.Book || mongoose.model("Book", bookSchema);
