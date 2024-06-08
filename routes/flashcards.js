@@ -110,7 +110,7 @@ router.post("/generate-flashcards", async (req, res) => {
 
     const savedFlashcards = await Flashcard.insertMany(flashcardsToSave);
 
-    res.status(200).json({ flashcards: savedFlashcards });
+    res.status(200).json({ flashcards: savedFlashcards, slug: book.slug }); // Return the book slug
   } catch (error) {
     console.error(
       "Error generating flashcards:",
