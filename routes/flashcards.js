@@ -148,7 +148,8 @@ router.get("/flashcards", async (req, res) => {
 });
 
 router.get("/books", async (req, res) => {
-  const { slug } = req.query;
+  const { slug, limit, page = 1 } = req.query;
+  const queryLimit = limit ? parseInt(limit) : undefined; // Remove default limit
 
   try {
     if (slug) {
@@ -156,12 +157,10 @@ router.get("/books", async (req, res) => {
       console.log("Book fetched:", book);
       res.status(200).json(book ? [book] : []);
     } else {
-      const limit = parseInt(req.query.limit) || 5;
-      const page = parseInt(req.query.page) || 1;
       const books = await Book.find()
         .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
+        .skip((page - 1) * (queryLimit || 0)) // Only apply skip if limit is specified
+        .limit(queryLimit) // Only apply limit if specified
         .lean();
       res.status(200).json(books);
     }
