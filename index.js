@@ -13,11 +13,11 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
+// Set the strictQuery option for Mongoose
+mongoose.set("strictQuery", true); // or false, based on your preference
+
 mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGODB_URI)
   .then(() => console.log("Connected to MongoDB Atlas"))
   .catch((err) => console.error("Failed to connect to MongoDB Atlas", err));
 
