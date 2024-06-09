@@ -170,4 +170,18 @@ router.get("/books", async (req, res) => {
   }
 });
 
+// New route to get random books
+router.get("/random-books", async (req, res) => {
+  const { count = 3 } = req.query;
+  const countInt = parseInt(count);
+
+  try {
+    const randomBooks = await Book.aggregate([{ $sample: { size: countInt } }]);
+    res.status(200).json(randomBooks);
+  } catch (error) {
+    console.error("Error fetching random books:", error.message);
+    res.status(500).json({ error: "Failed to fetch random books" });
+  }
+});
+
 export default router;
