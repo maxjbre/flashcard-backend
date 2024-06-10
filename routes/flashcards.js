@@ -150,17 +150,18 @@ router.get("/flashcards", async (req, res) => {
 router.get("/book", async (req, res) => {
   const { slug } = req.query;
 
+  if (!slug) {
+    return res.status(400).json({ error: "Missing slug parameter" });
+  }
+
   try {
-    console.log("Fetching book with slug:", slug); // Log the slug received
     const book = await Book.findOne({ slug }).lean();
     if (!book) {
-      console.log("Book not found with slug:", slug); // Log if no book is found
       return res.status(404).json({ error: "Book not found" });
     }
-    console.log("Book found:", book); // Log the book found
-    res.status(200).json(book); // Return a single book object
+    res.status(200).json(book);
   } catch (error) {
-    console.error("Error fetching book:", error.message);
+    console.error("Error fetching book:", error);
     res.status(500).json({ error: "Failed to fetch book" });
   }
 });
