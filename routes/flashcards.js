@@ -147,23 +147,36 @@ router.get("/flashcards", async (req, res) => {
   }
 });
 
-router.get("/books", async (req, res) => {
-  const { slug, limit, page = 1 } = req.query;
-  const queryLimit = limit ? parseInt(limit) : undefined; // Remove default limit
+router.get("/book", async (req, res) => {
+  const { slug } = req.query;
 
   try {
-    if (slug) {
-      const book = await Book.findOne({ slug }).lean();
-      console.log("Book fetched:", book);
-      res.status(200).json(book ? [book] : []);
-    } else {
-      const books = await Book.find()
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * (queryLimit || 0)) // Only apply skip if limit is specified
-        .limit(queryLimit) // Only apply limit if specified
-        .lean();
-      res.status(200).json(books);
+    console.log("Fetching book with slug:", slug); // Log the slug received
+    const book = await Book.findOne({ slug }).lean();
+    if (!book) {
+      console.log("Book not found with slug:", slug); // Log if no book is found
+      return res.status(404).json({ error: "Book not found" });
     }
+    console.log("Book found:", book); // Log the book found
+    res.status(200).json(book); // Return a single book object
+  } catch (error) {
+    console.error("Error fetching book:", error.message);
+    res.status(500).json({ error: "Failed to fetch book" });
+  }
+});
+
+router.get("/books", async (req, res) => {
+  const { limit, page = 1 } = req.query;
+  const queryLimit = limit ? parseInt(limit) : undefined;
+
+  try {
+    const books = await Book.find()
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * (queryLimit || 0))
+      .limit(queryLimit)
+      .lean();
+    console.log("Books found:", books.length); // Log number of books found
+    res.status(200).json(books);
   } catch (error) {
     console.error("Error fetching books:", error.message);
     res.status(500).json({ error: "Failed to fetch books" });

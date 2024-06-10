@@ -13,8 +13,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-// Set the strictQuery option for Mongoose
-mongoose.set("strictQuery", true); // or false, based on your preference
+mongoose.set("strictQuery", true);
 
 mongoose
   .connect(process.env.MONGODB_URI)
@@ -26,6 +25,12 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api", flashcardRoutes);
+
+// Centralized error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send({ error: "Something went wrong!" });
+});
 
 const port = process.env.PORT || 3001;
 
