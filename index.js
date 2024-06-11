@@ -8,20 +8,19 @@ dotenv.config();
 
 import flashcardRoutes from "./routes/flashcards.js";
 
-const app = express(); // Initialize app before using it
+const app = express();
 
+// Set up CORS to allow requests from your frontend domain
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "https://your-production-frontend-domain.com",
-  ],
+  origin: ["http://localhost:3000", "https://www.bookflashcard.com"],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
   optionsSuccessStatus: 204,
 };
 
+app.use(cors(corsOptions)); // Use corsOptions in CORS middleware
+
 app.use(bodyParser.json());
-app.use(cors(corsOptions)); // Use corsOptions after initializing app
 
 // Set the strictQuery option for Mongoose
 mongoose.set("strictQuery", true);
