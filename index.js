@@ -8,10 +8,20 @@ dotenv.config();
 
 import flashcardRoutes from "./routes/flashcards.js";
 
-const app = express();
+const app = express(); // Initialize app before using it
+
+const corsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "https://your-production-frontend-domain.com",
+  ],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
 
 app.use(bodyParser.json());
-app.use(cors()); // Ensure this is included
+app.use(cors(corsOptions)); // Use corsOptions after initializing app
 
 // Set the strictQuery option for Mongoose
 mongoose.set("strictQuery", true);
