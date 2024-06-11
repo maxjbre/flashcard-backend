@@ -155,8 +155,10 @@ router.get("/book", async (req, res) => {
   }
 
   try {
+    console.log(`Fetching book with slug: ${slug}`);
     const book = await Book.findOne({ slug }).lean();
     if (!book) {
+      console.log(`Book not found for slug: ${slug}`);
       return res.status(404).json({ error: "Book not found" });
     }
     res.status(200).json(book);
