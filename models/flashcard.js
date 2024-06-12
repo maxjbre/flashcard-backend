@@ -15,6 +15,11 @@ const flashcardSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  language: {
+    type: String,
+    required: true,
+    index: true,
+  },
 });
 
 const Flashcard =

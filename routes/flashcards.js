@@ -44,16 +44,17 @@ const extractBookInfoAndFlashcards = (responseContent) => {
 router.post("/generate-flashcards", async (req, res) => {
   const { title } = req.body;
 
-  const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Provide only the book information and JSON array and nothing else. Format:
-  {
-    "title": "<Correct Title>",
-    "author": "<Correct Author>",
-    "flashcards": [
-      {"question": "Question 1", "answer": "Answer 1"},
-      {"question": "Question 2", "answer": "Answer 2"},
-      ...
-    ]
-  }`;
+  const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
+{
+  "title": "<Correct Title>",
+  "author": "<Correct Author>",
+  "language": "<Language>",
+  "flashcards": [
+    {"question": "Question 1", "answer": "Answer 1"},
+    {"question": "Question 2", "answer": "Answer 2"},
+    ...
+  ]
+}`;
 
   try {
     const gptResponse = await openai.chat.completions.create({
@@ -62,8 +63,11 @@ router.post("/generate-flashcards", async (req, res) => {
       temperature: 0.7,
     });
 
-    const responseContent = gptResponse.choices[0].message.content;
+    let responseContent = gptResponse.choices[0].message.content;
     console.log("GPT raw response:", responseContent);
+
+    // Remove the code block markers
+    responseContent = responseContent.replace(/```json|```/g, "").trim();
 
     let bookInfo;
     let generatedFlashcards;
@@ -71,9 +75,10 @@ router.post("/generate-flashcards", async (req, res) => {
       const {
         title: bookTitle,
         author,
+        language, // Extract language
         flashcards,
-      } = extractBookInfoAndFlashcards(responseContent);
-      bookInfo = { title: bookTitle, author };
+      } = JSON.parse(responseContent);
+      bookInfo = { title: bookTitle, author, language }; // Include language
       generatedFlashcards = flashcards;
     } catch (error) {
       console.error("Error extracting book info or flashcards:", error);
@@ -92,6 +97,7 @@ router.post("/generate-flashcards", async (req, res) => {
         slug: slugify(`${bookInfo.title} by ${bookInfo.author}`, {
           lower: true,
         }),
+        language: bookInfo.language, // Set language
       });
       await book.save();
     } else {
@@ -106,6 +112,7 @@ router.post("/generate-flashcards", async (req, res) => {
     const flashcardsToSave = generatedFlashcards.map((flashcard) => ({
       ...flashcard,
       bookId: book._id,
+      language: bookInfo.language, // Set language
     }));
 
     const savedFlashcards = await Flashcard.insertMany(flashcardsToSave);
@@ -169,8 +176,9 @@ router.get("/book", async (req, res) => {
 });
 
 router.get("/books", async (req, res) => {
-  const { limit = 100, page = 1 } = req.query;
-  const queryPage = parseInt(page);
+  const { limit = 100, page = 1 } = req.query; // Default limit to 100 if not provided
+  const queryLimit = parseInt(limit, 10);
+  const queryPage = parseInt(page, 10);
 
   try {
     const books = await Book.find()

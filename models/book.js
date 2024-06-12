@@ -6,6 +6,7 @@ const bookSchema = new mongoose.Schema(
     title: { type: String, required: true, index: true },
     author: { type: String, required: true, index: true },
     slug: { type: String, unique: true, required: true, index: true },
+    language: { type: String, required: true, index: true }, // Add language field
   },
   { timestamps: true }
 );
