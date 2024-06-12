@@ -169,13 +169,13 @@ router.get("/book", async (req, res) => {
 });
 
 router.get("/books", async (req, res) => {
-  const { limit, page = 1 } = req.query;
-  const queryLimit = limit ? parseInt(limit) : undefined;
+  const { limit = 100, page = 1 } = req.query;
+  const queryPage = parseInt(page);
 
   try {
     const books = await Book.find()
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * (queryLimit || 0))
+      .sort({ createdAt: -1 }) // Ensure sorting by creation date
+      .skip((queryPage - 1) * queryLimit)
       .limit(queryLimit)
       .lean();
     console.log("Books found:", books.length); // Log number of books found
