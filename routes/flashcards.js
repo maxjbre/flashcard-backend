@@ -93,7 +93,7 @@ router.post("/check-or-create-book", async (req, res) => {
       });
 
       let responseContent = gptResponse.choices[0].message.content;
-      console.log("Received response from OpenAI API");
+      console.log("Received response from OpenAI API:", responseContent);
 
       // Remove the code block markers
       responseContent = responseContent.replace(/```json|```/g, "").trim();
@@ -106,6 +106,16 @@ router.post("/check-or-create-book", async (req, res) => {
         flashcards,
       } = extractBookInfoAndFlashcards(responseContent);
 
+      if (!language) {
+        console.error("Extracted data is missing the language field:", {
+          bookTitle,
+          author,
+          language,
+          flashcards,
+        });
+        throw new Error("Language field is missing in the extracted data");
+      }
+
       book = new Book({
         title: bookTitle,
         author,
@@ -113,7 +123,7 @@ router.post("/check-or-create-book", async (req, res) => {
         language,
       });
 
-      console.log("Saving new book to database");
+      console.log("Saving new book to database:", book);
       await book.save();
 
       const flashcardsToSave = flashcards.map((flashcard) => ({
