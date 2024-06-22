@@ -28,6 +28,10 @@ const sanitizeText = (text) => {
   return text.replace(/^(.*?)Answer: /i, "").trim();
 };
 
+const sanitizeTitle = (title) => {
+  return title.replace(/[^\w\s]/gi, "").toLowerCase();
+};
+
 const extractBookInfoAndFlashcards = (responseContent) => {
   const cleanedContent = responseContent.replace(/```json|```/g, "").trim();
 
@@ -79,8 +83,8 @@ router.post("/check-or-create-book", async (req, res) => {
     });
   }
 
-  // Normalize the title
-  const normalizedTitle = requestedTitle.toLowerCase();
+  // Normalize and sanitize the title
+  const normalizedTitle = sanitizeTitle(requestedTitle);
 
   try {
     console.log(`Checking for existing book with title: ${normalizedTitle}`);
@@ -132,8 +136,8 @@ router.post("/check-or-create-book", async (req, res) => {
 
       const { title, author, language, flashcards } = extractedData;
 
-      // Normalize the title for saving
-      const normalizedExtractedTitle = title.toLowerCase();
+      // Normalize and sanitize the title for saving
+      const normalizedExtractedTitle = sanitizeTitle(title);
       const slug = slugify(`${normalizedExtractedTitle} by ${author}`, {
         lower: true,
       });
@@ -245,7 +249,7 @@ router.get("/random-books", async (req, res) => {
 
 router.get("/flashcards", async (req, res) => {
   console.log("Received request for flashcards");
-  const { bookId, page = 1, limit = 20 } = req.query;
+  const { bookId, page = 1, limit = 50 } = req.query;
 
   console.log(`Received bookId: ${bookId}`);
 
