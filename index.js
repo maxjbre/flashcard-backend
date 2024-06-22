@@ -10,6 +10,9 @@ import flashcardRoutes from "./routes/flashcards.js";
 
 const app = express();
 
+// Enable 'trust proxy' to allow Express to read 'X-Forwarded-For' headers
+app.set("trust proxy", 1);
+
 // Set up CORS to allow requests from your frontend domain
 const corsOptions = {
   origin: ["http://localhost:3000", "https://www.bookflashcard.com"],
