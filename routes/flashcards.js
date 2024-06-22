@@ -39,10 +39,21 @@ const extractBookInfoAndFlashcards = (responseContent) => {
       throw new Error("Invalid flashcards format: not an array");
     }
 
+    if (!language) {
+      throw new Error("Language field is missing in the API response");
+    }
+
     const sanitizedFlashcards = flashcards.map((flashcard) => ({
       question: sanitizeText(flashcard.question),
       answer: sanitizeText(flashcard.answer),
     }));
+
+    console.log("Extracted data:", {
+      title,
+      author,
+      language,
+      flashcards: sanitizedFlashcards,
+    });
 
     return { title, author, language, flashcards: sanitizedFlashcards };
   } catch (error) {
@@ -53,10 +64,14 @@ const extractBookInfoAndFlashcards = (responseContent) => {
 
 router.post("/check-or-create-book", async (req, res) => {
   console.log("Received request to check or create book");
-  const { title } = req.body;
+  const { title: requestedTitle } = req.body;
 
   // Input validation
-  if (!title || typeof title !== "string" || title.length < 3) {
+  if (
+    !requestedTitle ||
+    typeof requestedTitle !== "string" ||
+    requestedTitle.length < 3
+  ) {
     console.log("Invalid book title received");
     return res.status(400).json({
       error:
@@ -65,15 +80,15 @@ router.post("/check-or-create-book", async (req, res) => {
   }
 
   try {
-    console.log(`Checking for existing book with title: ${title}`);
-    let book = await Book.findOne({ title });
+    console.log(`Checking for existing book with title: ${requestedTitle}`);
+    let book = await Book.findOne({ title: requestedTitle });
 
     if (book) {
       console.log(`Book found: ${book.title}`);
       return res.status(200).json({ slug: book.slug });
     } else {
       console.log("Book not found. Creating new book...");
-      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
+      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${requestedTitle}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
       {
         "title": "<Correct Title>",
         "author": "<Correct Author>",
@@ -87,7 +102,7 @@ router.post("/check-or-create-book", async (req, res) => {
 
       console.log("Sending request to OpenAI API");
       const gptResponse = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-4",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
       });
@@ -95,31 +110,31 @@ router.post("/check-or-create-book", async (req, res) => {
       let responseContent = gptResponse.choices[0].message.content;
       console.log("Received response from OpenAI API:", responseContent);
 
-      // Remove the code block markers
-      responseContent = responseContent.replace(/```json|```/g, "").trim();
-
       console.log("Extracting book info and flashcards");
-      const {
-        title: bookTitle,
-        author,
-        language,
-        flashcards,
-      } = extractBookInfoAndFlashcards(responseContent);
+      let extractedData;
+      try {
+        extractedData = extractBookInfoAndFlashcards(responseContent);
+      } catch (error) {
+        console.error("Error extracting book info and flashcards:", error);
+        throw new Error("Failed to extract book info and flashcards");
+      }
 
-      if (!language) {
-        console.error("Extracted data is missing the language field:", {
-          bookTitle,
-          author,
-          language,
-          flashcards,
-        });
+      if (!extractedData.language) {
+        console.error(
+          "Extracted data is missing the language field:",
+          extractedData
+        );
         throw new Error("Language field is missing in the extracted data");
       }
 
+      const { title, author, language, flashcards } = extractedData;
+
+      const slug = slugify(`${title} by ${author}`, { lower: true });
+
       book = new Book({
-        title: bookTitle,
+        title,
         author,
-        slug: slugify(`${bookTitle} by ${author}`, { lower: true }),
+        slug,
         language,
       });
 
@@ -129,6 +144,7 @@ router.post("/check-or-create-book", async (req, res) => {
       const flashcardsToSave = flashcards.map((flashcard) => ({
         ...flashcard,
         bookId: book._id,
+        language: book.language,
       }));
 
       console.log("Saving flashcards to database");
