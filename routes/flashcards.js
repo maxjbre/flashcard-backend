@@ -79,9 +79,12 @@ router.post("/check-or-create-book", async (req, res) => {
     });
   }
 
+  // Normalize the title
+  const normalizedTitle = requestedTitle.toLowerCase();
+
   try {
-    console.log(`Checking for existing book with title: ${requestedTitle}`);
-    let book = await Book.findOne({ title: requestedTitle });
+    console.log(`Checking for existing book with title: ${normalizedTitle}`);
+    let book = await Book.findOne({ normalizedTitle });
 
     if (book) {
       console.log(`Book found: ${book.title}`);
@@ -129,13 +132,18 @@ router.post("/check-or-create-book", async (req, res) => {
 
       const { title, author, language, flashcards } = extractedData;
 
-      const slug = slugify(`${title} by ${author}`, { lower: true });
+      // Normalize the title for saving
+      const normalizedExtractedTitle = title.toLowerCase();
+      const slug = slugify(`${normalizedExtractedTitle} by ${author}`, {
+        lower: true,
+      });
 
       book = new Book({
         title,
         author,
         slug,
         language,
+        normalizedTitle: normalizedExtractedTitle,
       });
 
       console.log("Saving new book to database:", book);
@@ -155,35 +163,6 @@ router.post("/check-or-create-book", async (req, res) => {
     }
   } catch (error) {
     console.error("Error checking or creating book:", error);
-    res.status(500).json({
-      error: "An internal server error occurred. Please try again later.",
-    });
-  }
-});
-
-router.get("/flashcards", async (req, res) => {
-  console.log("Received request for flashcards");
-  const { bookId, page = 1, limit = 10 } = req.query;
-
-  console.log(`Received bookId: ${bookId}`);
-
-  if (!bookId) {
-    console.log("Missing bookId parameter");
-    return res.status(400).json({ error: "Missing bookId parameter" });
-  }
-
-  try {
-    console.log(`Fetching flashcards for bookId: ${bookId}`);
-    const flashcards = await Flashcard.find({ bookId })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .populate("bookId")
-      .lean();
-
-    console.log(`Flashcards found: ${flashcards.length}`);
-    res.status(200).json(flashcards);
-  } catch (error) {
-    console.error("Error fetching flashcards:", error);
     res.status(500).json({
       error: "An internal server error occurred. Please try again later.",
     });
@@ -258,6 +237,35 @@ router.get("/random-books", async (req, res) => {
     res.status(200).json(randomBooks);
   } catch (error) {
     console.error("Error fetching random books:", error.message);
+    res.status(500).json({
+      error: "An internal server error occurred. Please try again later.",
+    });
+  }
+});
+
+router.get("/flashcards", async (req, res) => {
+  console.log("Received request for flashcards");
+  const { bookId, page = 1, limit = 20 } = req.query;
+
+  console.log(`Received bookId: ${bookId}`);
+
+  if (!bookId) {
+    console.log("Missing bookId parameter");
+    return res.status(400).json({ error: "Missing bookId parameter" });
+  }
+
+  try {
+    console.log(`Fetching flashcards for bookId: ${bookId}`);
+    const flashcards = await Flashcard.find({ bookId })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .populate("bookId")
+      .lean();
+
+    console.log(`Flashcards found: ${flashcards.length}`);
+    res.status(200).json(flashcards);
+  } catch (error) {
+    console.error("Error fetching flashcards:", error);
     res.status(500).json({
       error: "An internal server error occurred. Please try again later.",
     });

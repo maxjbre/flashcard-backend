@@ -7,13 +7,17 @@ const bookSchema = new mongoose.Schema(
     author: { type: String, required: true, index: true },
     slug: { type: String, unique: true, required: true, index: true },
     language: { type: String, required: true, index: true },
+    normalizedTitle: { type: String, required: true, index: true },
   },
   { timestamps: true }
 );
 
 bookSchema.pre("save", function (next) {
-  if (this.isNew || this.isModified("title")) {
-    this.slug = slugify(`${this.title} by ${this.author}`, { lower: true });
+  if (this.isNew || this.isModified("title") || this.isModified("author")) {
+    this.normalizedTitle = this.title.toLowerCase();
+    this.slug = slugify(`${this.normalizedTitle} by ${this.author}`, {
+      lower: true,
+    });
   }
   next();
 });
