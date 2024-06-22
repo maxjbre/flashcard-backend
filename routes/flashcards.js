@@ -5,10 +5,20 @@ import Flashcard from "../models/flashcard.js";
 import dotenv from "dotenv";
 import connectDB from "../utils/connectDB.js";
 import slugify from "slugify";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
 const router = express.Router();
+
+// Set up rate limiter: maximum of 100 requests per 15 minutes
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50,
+});
+
+// Apply rate limiter to all routes in this file
+router.use(limiter);
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -23,7 +33,7 @@ const extractBookInfoAndFlashcards = (responseContent) => {
 
   try {
     const jsonResponse = JSON.parse(cleanedContent);
-    const { title, author, flashcards } = jsonResponse;
+    const { title, author, language, flashcards } = jsonResponse;
 
     if (!Array.isArray(flashcards)) {
       throw new Error("Invalid flashcards format: not an array");
@@ -34,112 +44,110 @@ const extractBookInfoAndFlashcards = (responseContent) => {
       answer: sanitizeText(flashcard.answer),
     }));
 
-    return { title, author, flashcards: sanitizedFlashcards };
+    return { title, author, language, flashcards: sanitizedFlashcards };
   } catch (error) {
     console.error("Error parsing JSON content:", error);
     throw new Error("Failed to parse JSON from OpenAI response");
   }
 };
 
-router.post("/generate-flashcards", async (req, res) => {
+router.post("/check-or-create-book", async (req, res) => {
+  console.log("Received request to check or create book");
   const { title } = req.body;
 
-  const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
-{
-  "title": "<Correct Title>",
-  "author": "<Correct Author>",
-  "language": "<Language>",
-  "flashcards": [
-    {"question": "Question 1", "answer": "Answer 1"},
-    {"question": "Question 2", "answer": "Answer 2"},
-    ...
-  ]
-}`;
+  // Input validation
+  if (!title || typeof title !== "string" || title.length < 3) {
+    console.log("Invalid book title received");
+    return res.status(400).json({
+      error:
+        "Invalid book title. Title must be a string with at least 3 characters.",
+    });
+  }
 
   try {
-    const gptResponse = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
+    console.log(`Checking for existing book with title: ${title}`);
+    let book = await Book.findOne({ title });
 
-    let responseContent = gptResponse.choices[0].message.content;
-    console.log("GPT raw response:", responseContent);
+    if (book) {
+      console.log(`Book found: ${book.title}`);
+      return res.status(200).json({ slug: book.slug });
+    } else {
+      console.log("Book not found. Creating new book...");
+      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${title}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
+      {
+        "title": "<Correct Title>",
+        "author": "<Correct Author>",
+        "language": "<Language>",
+        "flashcards": [
+          {"question": "Question 1", "answer": "Answer 1"},
+          {"question": "Question 2", "answer": "Answer 2"},
+          ...
+        ]
+      }`;
 
-    // Remove the code block markers
-    responseContent = responseContent.replace(/```json|```/g, "").trim();
+      console.log("Sending request to OpenAI API");
+      const gptResponse = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+      });
 
-    let bookInfo;
-    let generatedFlashcards;
-    try {
+      let responseContent = gptResponse.choices[0].message.content;
+      console.log("Received response from OpenAI API");
+
+      // Remove the code block markers
+      responseContent = responseContent.replace(/```json|```/g, "").trim();
+
+      console.log("Extracting book info and flashcards");
       const {
         title: bookTitle,
         author,
-        language, // Extract language
+        language,
         flashcards,
-      } = JSON.parse(responseContent);
-      bookInfo = { title: bookTitle, author, language }; // Include language
-      generatedFlashcards = flashcards;
-    } catch (error) {
-      console.error("Error extracting book info or flashcards:", error);
-      return res.status(500).json({
-        error: "Failed to generate flashcards",
-        details: error.message,
-      });
-    }
+      } = extractBookInfoAndFlashcards(responseContent);
 
-    let book = await Book.findOne({ title: bookInfo.title });
-
-    if (!book) {
       book = new Book({
-        title: bookInfo.title,
-        author: bookInfo.author,
-        slug: slugify(`${bookInfo.title} by ${bookInfo.author}`, {
-          lower: true,
-        }),
-        language: bookInfo.language, // Set language
+        title: bookTitle,
+        author,
+        slug: slugify(`${bookTitle} by ${author}`, { lower: true }),
+        language,
       });
+
+      console.log("Saving new book to database");
       await book.save();
-    } else {
-      if (!book.slug) {
-        book.slug = slugify(`${book.title} by ${book.author}`, { lower: true });
-        await book.save();
-      }
+
+      const flashcardsToSave = flashcards.map((flashcard) => ({
+        ...flashcard,
+        bookId: book._id,
+      }));
+
+      console.log("Saving flashcards to database");
+      await Flashcard.insertMany(flashcardsToSave);
+
+      console.log(`New book created: ${book.title}`);
+      res.status(201).json({ slug: book.slug });
     }
-
-    console.log("Book ID:", book._id);
-
-    const flashcardsToSave = generatedFlashcards.map((flashcard) => ({
-      ...flashcard,
-      bookId: book._id,
-      language: bookInfo.language, // Set language
-    }));
-
-    const savedFlashcards = await Flashcard.insertMany(flashcardsToSave);
-
-    res.status(200).json({ flashcards: savedFlashcards, slug: book.slug }); // Return the book slug
   } catch (error) {
-    console.error(
-      "Error generating flashcards:",
-      error.response?.data || error.message
-    );
+    console.error("Error checking or creating book:", error);
     res.status(500).json({
-      error: "Failed to generate flashcards",
-      details: error.response?.data || error.message,
+      error: "An internal server error occurred. Please try again later.",
     });
   }
 });
 
 router.get("/flashcards", async (req, res) => {
+  console.log("Received request for flashcards");
   const { bookId, page = 1, limit = 10 } = req.query;
 
   console.log(`Received bookId: ${bookId}`);
 
   if (!bookId) {
+    console.log("Missing bookId parameter");
     return res.status(400).json({ error: "Missing bookId parameter" });
   }
 
   try {
+    console.log(`Fetching flashcards for bookId: ${bookId}`);
     const flashcards = await Flashcard.find({ bookId })
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
@@ -150,14 +158,18 @@ router.get("/flashcards", async (req, res) => {
     res.status(200).json(flashcards);
   } catch (error) {
     console.error("Error fetching flashcards:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: "An internal server error occurred. Please try again later.",
+    });
   }
 });
 
 router.get("/book", async (req, res) => {
+  console.log("Received request for book");
   const { slug } = req.query;
 
   if (!slug) {
+    console.log("Missing slug parameter");
     return res.status(400).json({ error: "Missing slug parameter" });
   }
 
@@ -168,19 +180,24 @@ router.get("/book", async (req, res) => {
       console.log(`Book not found for slug: ${slug}`);
       return res.status(404).json({ error: "Book not found" });
     }
+    console.log(`Book found: ${book.title}`);
     res.status(200).json(book);
   } catch (error) {
     console.error("Error fetching book:", error);
-    res.status(500).json({ error: "Failed to fetch book" });
+    res.status(500).json({
+      error: "An internal server error occurred. Please try again later.",
+    });
   }
 });
 
 router.get("/books", async (req, res) => {
+  console.log("Received request for books");
   const { limit = 100, page = 1 } = req.query; // Default limit to 100 if not provided
   const queryLimit = parseInt(limit, 10);
   const queryPage = parseInt(page, 10);
 
   try {
+    console.log(`Fetching books: page ${queryPage}, limit ${queryLimit}`);
     const books = await Book.find()
       .sort({ createdAt: -1 }) // Ensure sorting by creation date
       .skip((queryPage - 1) * queryLimit)
@@ -190,21 +207,34 @@ router.get("/books", async (req, res) => {
     res.status(200).json(books);
   } catch (error) {
     console.error("Error fetching books:", error.message);
-    res.status(500).json({ error: "Failed to fetch books" });
+    res.status(500).json({
+      error: "An internal server error occurred. Please try again later.",
+    });
   }
 });
 
-// New route to get random books
 router.get("/random-books", async (req, res) => {
+  console.log("Received request for random books");
   const { count = 3 } = req.query;
   const countInt = parseInt(count);
 
+  if (isNaN(countInt) || countInt < 1) {
+    console.log("Invalid count parameter received");
+    return res
+      .status(400)
+      .json({ error: "Invalid count parameter. Must be a positive integer." });
+  }
+
   try {
+    console.log(`Fetching ${countInt} random books`);
     const randomBooks = await Book.aggregate([{ $sample: { size: countInt } }]);
+    console.log(`${randomBooks.length} random books fetched successfully`);
     res.status(200).json(randomBooks);
   } catch (error) {
     console.error("Error fetching random books:", error.message);
-    res.status(500).json({ error: "Failed to fetch random books" });
+    res.status(500).json({
+      error: "An internal server error occurred. Please try again later.",
+    });
   }
 });
 
