@@ -95,17 +95,28 @@ router.post("/check-or-create-book", async (req, res) => {
       return res.status(200).json({ slug: book.slug });
     } else {
       console.log("Book not found. Creating new book...");
-      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${requestedTitle}". Then create a JSON array of flashcards for the key concepts explained in the book. Focus on key concepts and ensure clarity and brevity in each flashcard.  Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
-      {
-        "title": "<Correct Title>",
-        "author": "<Correct Author>",
-        "language": "<Language>",
-        "flashcards": [
-          {"question": "Question 1", "answer": "Answer 1"},
-          {"question": "Question 2", "answer": "Answer 2"},
-          ...
-        ]
-      }`;
+      const prompt = `Task: Generate educational flashcards based for the key concepts in the book "${requestedTitle}".
+
+Specifics:
+1. Provide the correct spelling and capitalization for the book title and the author's name.
+2. Identify the language of the book based on the book title.
+3. Create a JSON array of flashcards that capture key concepts from the book, ensuring each flashcard is clear, concise and relevant.
+4. Ensure the flashcards match the language of the book title.
+5. Provide only the book information and JSON array and nothing else. 
+6. Follow the expected format.
+
+Format:
+{
+  "title": "<Correct Title>",
+  "author": "<Correct Author>",
+  "language": "<Language>",
+  "flashcards": [
+    {"question": "Question 1", "answer": "Answer 1"},
+    {"question": "Question 2", "answer": "Answer 2"},
+    ...
+  ]
+}
+`;
 
       console.log("Sending request to OpenAI API");
       const gptResponse = await openai.chat.completions.create({
