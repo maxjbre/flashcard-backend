@@ -95,7 +95,7 @@ router.post("/check-or-create-book", async (req, res) => {
       return res.status(200).json({ slug: book.slug });
     } else {
       console.log("Book not found. Creating new book...");
-      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${requestedTitle}". Then create a JSON array of flashcards for the key concepts explained in the book. Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
+      const prompt = `Provide the correct spelling and capitalization of the book title and the author's name for the book titled "${requestedTitle}". Then create a JSON array of flashcards for the key concepts explained in the book. Focus on key concepts and ensure clarity and brevity in each flashcard.  Each flashcard should be a JSON object with the fields: "question" and "answer". Also, provide the language of the book. The language of the flashcards should match the language of the book. Provide only the book information and JSON array and nothing else. Format:
       {
         "title": "<Correct Title>",
         "author": "<Correct Author>",
