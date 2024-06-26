@@ -103,7 +103,7 @@ Specifics:
 3. Create a JSON array of flashcards that capture key concepts from the book, ensuring each flashcard is clear, concise and relevant.
 4. Ensure the flashcards match the language of the book title.
 5. Provide only the book information and JSON array and nothing else. 
-6. Follow the expected format.
+6. If it is a fiction book create flashcards for higher-level learnings from the book.
 
 Format:
 {
