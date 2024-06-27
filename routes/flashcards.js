@@ -212,19 +212,35 @@ router.get("/book", async (req, res) => {
 
 router.get("/books", async (req, res) => {
   console.log("Received request for books");
-  const { limit = 100, page = 1 } = req.query; // Default limit to 100 if not provided
+  const { limit = 100, page = 1, lastId } = req.query;
   const queryLimit = parseInt(limit, 10);
   const queryPage = parseInt(page, 10);
 
   try {
-    console.log(`Fetching books: page ${queryPage}, limit ${queryLimit}`);
-    const books = await Book.find()
-      .sort({ createdAt: -1 }) // Ensure sorting by creation date
-      .skip((queryPage - 1) * queryLimit)
-      .limit(queryLimit)
+    console.log(
+      `Fetching books: page ${queryPage}, limit ${queryLimit}, lastId ${lastId}`
+    );
+
+    let query = {};
+    if (lastId) {
+      query = { _id: { $lt: lastId } };
+    }
+
+    const books = await Book.find(query)
+      .sort({ _id: -1 }) // Sort by _id instead of createdAt
+      .limit(queryLimit + 1) // Fetch one extra to check if there are more
       .lean();
-    console.log("Books found:", books.length); // Log number of books found
-    res.status(200).json(books);
+
+    const hasMore = books.length > queryLimit;
+    const booksToSend = hasMore ? books.slice(0, -1) : books;
+
+    console.log("Books found:", booksToSend.length);
+    res.status(200).json({
+      books: booksToSend,
+      hasMore,
+      lastId:
+        booksToSend.length > 0 ? booksToSend[booksToSend.length - 1]._id : null,
+    });
   } catch (error) {
     console.error("Error fetching books:", error.message);
     res.status(500).json({
